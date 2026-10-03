@@ -1,0 +1,49 @@
+# Copyright (c) 2026 Patrick McDowell
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Sync upstream main
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'crims0n/muse-gadget-core2'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fast-forward main to upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --no-tags https://github.com/facebookincubator/muse-gadget-sdk.git main:refs/remotes/upstream/main
+          if ! git merge-base --is-ancestor HEAD refs/remotes/upstream/main; then
+            echo "::error::main has diverged from upstream; refusing to overwrite it."
+            exit 1
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/merge-upstream" -f branch=main
