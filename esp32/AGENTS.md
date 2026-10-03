@@ -140,7 +140,9 @@ turns on screenshots: `tools/muse/snap.py PORT KEYS OUT.png` sends bench keys
 and saves the screen, and `>face=thinking` (or `idle`, `listening`,
 `speaking`, `error`, `boot`, `off`, `happy`) in KEYS picks the avatar mode first.
 Screenshots are off in normal builds because each one takes a buffer the size
-of the screen. `>face=` works in any build. Or run `idf.py` directly:
+of the screen. Bench builds also accept `>caption=TEXT` to test long and short
+caption redraws without a network turn. `>face=` works in any build.
+Or run `idf.py` directly:
 
 ```sh
 idf.py -B build-muse-aipi -DIDF_TARGET=esp32s3 \

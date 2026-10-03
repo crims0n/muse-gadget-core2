@@ -1,5 +1,6 @@
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * Modified 2026 by Patrick McDowell: reply readability and redraw checks.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -588,7 +589,7 @@ static void set_answer(int which)
             lv_obj_add_flag(l->hides[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
-    if (!muse_board->round) {
+    if (s_ring && !muse_board->round) {
         lv_obj_set_flag(s_ring, LV_OBJ_FLAG_HIDDEN, l != NULL);   /* the reply runs past a rectangle's ring */
     }
     if (l) {
@@ -648,6 +649,38 @@ static void add_hides(answer_layout_t *l, int n)
             l->hides[n++] = hints[i];
         }
     }
+}
+
+/* Landscape 320x240 panels have room for readable pages even though they
+ * use the compact chrome. Keep a small avatar above six lines of 16 px
+ * text, instead of putting 8 px captions over the bottom of the avatar. */
+static void build_compact_answer(lv_obj_t *face)
+{
+    const lv_font_t *font = &lv_font_unscii_16;
+    int cw = lv_font_get_glyph_width(font, 'M', ' ');
+    int pitch = lv_font_get_line_height(font) + CAPTION_LINE_SPACE;
+    int top = 88 - s_h / 2;
+    int lines = (s_h - 88 - 30 + CAPTION_LINE_SPACE) / pitch;
+    answer_layout_t *l = &s_answers[ANSWER_HEARD];
+    l->px = 64;
+    l->y = 48 - s_h / 2;
+    l->align = LV_TEXT_ALIGN_LEFT;
+    set_reply_box(l, (s_w - 24) / cw, lines, top, cw, pitch);
+
+    s_reply_lbl = make_label(face, font, COLOR_CAPTION);
+    lv_obj_set_style_text_line_space(s_reply_lbl, CAPTION_LINE_SPACE, 0);
+    lv_obj_set_style_bg_color(s_reply_lbl, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_reply_lbl, LV_OPA_COVER, 0);
+    lv_label_set_long_mode(s_reply_lbl, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_remove_flag(s_reply_lbl, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_reply_lbl, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_update_layout(face);
+    l->hides[0] = s_state_lbl;
+    l->hides[1] = s_name_lbl;
+    add_hides(l, 2);
+    s_answers[ANSWER_READ] = *l;
+    ESP_LOGI(TAG, "compact reply pages: %d x %d", l->cols, l->lines);
 }
 
 /*
@@ -877,7 +910,7 @@ static void build_screen(void)
         lv_obj_set_style_pad_ver(s_caption_lbl, 2, 0);
         lv_obj_set_style_text_line_space(s_caption_lbl, 2, 0);
         lv_obj_set_style_bg_color(s_caption_lbl, lv_color_black(), 0);
-        lv_obj_set_style_bg_opa(s_caption_lbl, LV_OPA_70, 0);
+        lv_obj_set_style_bg_opa(s_caption_lbl, LV_OPA_COVER, 0);
         lv_label_set_long_mode(s_caption_lbl, LV_LABEL_LONG_MODE_DOTS);
         /* Touch screens need the caption above the navigation dots too. */
         lv_obj_align(s_caption_lbl, LV_ALIGN_BOTTOM_MID, 0, (s_tall || s_tv) ? -30 : -3);
@@ -887,6 +920,9 @@ static void build_screen(void)
         lv_obj_set_size(s_bar, 0, 3);
         lv_obj_set_style_bg_opa(s_bar, LV_OPA_COVER, 0);
         lv_obj_align(s_bar, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+        if (!muse_board->round && s_w >= 300 && s_h >= 200) {
+            build_compact_answer(face);
+        }
         return;
     }
     /* Fixed height: a longer caption ends in dots rather than growing into the ring. */
@@ -1383,6 +1419,11 @@ static void update_status(muse_mode_t mode, float now)
     }
     if (fresh) {
         lv_obj_t *lbl = answer >= 0 ? s_reply_lbl : s_caption_lbl;
+        /* Clear the whole previous text area when the page becomes shorter.
+         * Invalidating its parent also redraws the background under the text. */
+        lv_area_t area;
+        lv_obj_get_coords(lbl, &area);
+        lv_obj_invalidate_area(lv_obj_get_parent(lbl), &area);
         lv_label_set_text(lbl, caption);
         lv_obj_set_flag(lbl, LV_OBJ_FLAG_HIDDEN, !caption[0]);
         if (s_reply_lbl) {

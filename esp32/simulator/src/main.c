@@ -2,6 +2,7 @@
 
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * Modified 2026 by Patrick McDowell: reply readability and redraw checks.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,7 +57,7 @@ static char s_ble_name[32] = "MuseGadget-SIM001";
 static void usage(FILE *out, const char *argv0)
 {
     fprintf(out,
-            "Usage: %s [--headless] [--scenario FILE] [--run-ms N] "
+            "Usage: %s [--board watcher|core2] [--headless] [--scenario FILE] [--run-ms N] "
             "[--screenshot FILE.ppm]\n"
             "\n"
             "Scenario lines are key=value. Supported keys:\n"
@@ -68,6 +69,7 @@ static void usage(FILE *out, const char *argv0)
             "  ble=off|advertising|connected         passkey=0..999999\n"
             "  paired=true|false  link=boot|unpaired|pairing|confirm|connecting|online|offline|error\n"
             "  speaker=true|false brightness=10..100 advance=MILLISECONDS\n"
+            "  redraw=true (invalidate the whole screen for redraw comparisons)\n"
             "\n"
             "Interactive keys: F1..F7 select face states, H is happy, Space is\n"
             "push-to-talk, +/- change level, [/] change progress, S sleeps,\n"
@@ -365,6 +367,10 @@ static bool apply_setting(const char *key, const char *value, bool real_time)
         render_for((uint32_t)number, real_time);
         return true;
     }
+    if (!strcmp(key, "redraw") && parse_bool(value, &flag) && flag) {
+        lv_obj_invalidate(lv_screen_active());
+        return true;
+    }
     return false;
 }
 
@@ -471,10 +477,13 @@ int main(int argc, char **argv)
 {
     const char *scenario = NULL;
     const char *screenshot = NULL;
+    const char *board = "watcher";
     uint32_t run_ms = 1000;
     bool headless = false;
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--headless")) {
+        if (!strcmp(argv[i], "--board") && i + 1 < argc) {
+            board = argv[++i];
+        } else if (!strcmp(argv[i], "--headless")) {
             headless = true;
         } else if (!strcmp(argv[i], "--scenario") && i + 1 < argc) {
             scenario = argv[++i];
@@ -495,6 +504,10 @@ int main(int argc, char **argv)
             usage(stderr, argv[0]);
             return 2;
         }
+    }
+    if (!sim_board_select(board)) {
+        fprintf(stderr, "unknown board: %s\n", board);
+        return 2;
     }
 
     if (headless) {
