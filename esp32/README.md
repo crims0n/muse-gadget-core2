@@ -179,7 +179,7 @@ status screen.
 | M5Stack StopWatch | UI, push-to-talk, settings, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
 | M5Stack CoreS3 | UI, touch, PWR push-to-talk, settings, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
 | M5Stack StickC Plus2 | UI, push-to-talk, two-button menu, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
-| M5Stack Core2 | UI, push-to-talk on the touch strip, touch menu, images | `tools/muse/board.sh build core2` |
+| M5Stack Core2 (v1.0; v1.1 needs `CONFIG_BSP_PMU_AXP2101=y` — see [`devices/`](devices)) | UI, push-to-talk on the touch strip, touch menu, images | `tools/muse/board.sh build core2` |
 
 See [`devices/`](devices) for each board's hardware, features, and where to
 buy one.
