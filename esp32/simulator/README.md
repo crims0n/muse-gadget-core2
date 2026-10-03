@@ -1,5 +1,6 @@
 <!--
 Copyright (c) Meta Platforms, Inc. and affiliates.
+Modified 2026 by Patrick McDowell: reply readability and redraw checks.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +18,8 @@ limitations under the License.
 # UI simulator
 
 This is a desktop preview of the Muse interface in a 412 x 412 SenseCAP
-Watcher window. It compiles the production `muse_ui.c`, state and text code,
+Watcher window, or a 320 x 240 Core2 window with `--board core2`.
+It compiles the production `muse_ui.c`, state and text code,
 and the avatar renderer. SDL supplies the display, mouse input, and timing while
 small host adapters stand in for ESP-IDF, FreeRTOS, Wi-Fi, Bluetooth, Link,
 settings, and power services.
@@ -186,6 +188,8 @@ Supported scenario keys are:
 - `link`: `boot`, `unpaired`, `pairing`, `confirm`, `connecting`, `online`,
   `offline`, or `error`
 - `speaker`, `brightness`, and `advance` in milliseconds
+- `redraw=true` to invalidate the whole screen; tests compare this with normal
+  partial updates to detect pixels left behind by previous captions
 
 Invalid options and scenario values return a nonzero exit status and identify
 the bad line.

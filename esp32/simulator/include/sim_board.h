@@ -1,5 +1,6 @@
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * Modified 2026 by Patrick McDowell: reply readability and redraw checks.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,5 +21,6 @@
 #include "muse_board.h"
 
 /* The desktop board profile and the SDL display it creates. */
+bool sim_board_select(const char *name);
 const muse_board_t *sim_board_get(void);
 lv_display_t *sim_board_display(void);

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+# Modified 2026 by Patrick McDowell: reply readability and redraw checks.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,21 +30,22 @@ HERE = Path(__file__).resolve().parent
 SCENARIOS = tuple(sorted((HERE / "scenarios").glob("*.txt")))
 
 
-def read_ppm(path: Path) -> bytes:
+def read_ppm(path: Path, width=WIDTH, height=HEIGHT) -> bytes:
     raw = path.read_bytes()
-    header = f"P6\n{WIDTH} {HEIGHT}\n255\n".encode()
+    header = f"P6\n{width} {height}\n255\n".encode()
     assert raw.startswith(header), f"{path}: wrong PPM header"
     pixels = raw[len(header) :]
-    assert len(pixels) == WIDTH * HEIGHT * 3, f"{path}: truncated framebuffer"
+    assert len(pixels) == width * height * 3, f"{path}: truncated framebuffer"
     assert len(set(pixels)) > 8, f"{path}: framebuffer has too few colours"
     return pixels
 
 
-def render(binary: Path, scenario: Path, output: Path) -> tuple[str, subprocess.CompletedProcess[str]]:
+def render(binary: Path, scenario: Path, output: Path, board="watcher") -> tuple[str, subprocess.CompletedProcess[str]]:
     env = {**os.environ, "SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy"}
     proc = subprocess.run(
         [
             str(binary),
+            "--board", board,
             "--headless",
             "--scenario",
             str(scenario),
@@ -59,7 +61,7 @@ def render(binary: Path, scenario: Path, output: Path) -> tuple[str, subprocess.
         timeout=30,
     )
     assert proc.returncode == 0, f"{scenario.name}:\n{proc.stdout}\n{proc.stderr}"
-    pixels = read_ppm(output)
+    pixels = read_ppm(output, 320, 240) if board == "core2" else read_ppm(output)
     return hashlib.sha256(pixels).hexdigest(), proc
 
 
@@ -81,6 +83,31 @@ def main() -> None:
             hashes[scenario.stem] = first
 
         assert len(set(hashes.values())) == len(hashes), f"scenarios rendered identically: {hashes}"
+
+        # A partial redraw after changing long/short captions must match a
+        # full redraw, with no pixels left behind by the previous text.
+        base = "paired=true\nlink=online\nface=speaking\nadvance=400\n"
+        for name, captions in {
+            "long-short": ["WIDE OLD TEXT " * 20, "Hello!"],
+            "short-long": ["Hello!", "A longer reply wraps across several lines without overlapping the avatar."],
+            "punctuation": ["Smart quotes: ‘hello’ — café… " * 8, "All clear."],
+        }.items():
+            scenario = tmp_path / f"core2-{name}.txt"
+            text = base + "".join(f"caption={caption}\nadvance=400\n" for caption in captions)
+            scenario.write_text(text)
+            partial, _ = render(binary, scenario, tmp_path / f"core2-{name}-partial.ppm", "core2")
+            if name == "short-long":
+                pixels = read_ppm(tmp_path / f"core2-{name}-partial.ppm", 320, 240)
+                text_rows = 0
+                for y in range(88, 200):
+                    row = pixels[(y * 320 + 16) * 3:(y * 320 + 304) * 3]
+                    if any(r > 160 and g > 120 and b > 240
+                           for r, g, b in zip(row[::3], row[1::3], row[2::3])):
+                        text_rows += 1
+                assert text_rows > 40, "Core2 reply is still confined to a tiny caption"
+            scenario.write_text(text + "redraw=true\n")
+            full, _ = render(binary, scenario, tmp_path / f"core2-{name}-full.ppm", "core2")
+            assert partial == full, f"{name}: partial redraw left stale text"
 
         # Showing shutdown must not lock subsequent preview state selections.
         after_off = tmp_path / "after-off.txt"

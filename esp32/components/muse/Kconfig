@@ -73,7 +73,7 @@ menu "Muse"
             depends on IDF_TARGET_ESP32S3
 
         config MUSE_BOARD_M5STACK_CORE2
-            bool "M5Stack Core2 (ESP32, touch LCD, PWR talks)"
+            bool "M5Stack Core2 v1.0 (ESP32, touch LCD, touch-strip talk)"
             depends on IDF_TARGET_ESP32
     endchoice
 

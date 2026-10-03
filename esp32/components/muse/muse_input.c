@@ -1,5 +1,6 @@
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * Modified 2026 by Patrick McDowell: reply readability and redraw checks.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -570,6 +571,13 @@ static void set_face(const char *name)
  */
 static bool console_command(char *line, bool whole)
 {
+#if LV_USE_SNAPSHOT
+    /* Repeatable caption redraw checks without sending a chat message. */
+    if (!strncmp(line, "caption=", 8)) {
+        muse_state_set_caption("%s", line + 8);
+        return true;
+    }
+#endif
     if (!strcmp(line, "status")) {
         size_t cap = 1024;   /* long SSID, host and VM names escaped: past 512 */
         char *json = heap_caps_malloc(cap, MUSE_BIG_CAPS);

@@ -21,7 +21,7 @@ limitations under the License.
 > [muse-gadget-sdk](https://github.com/facebookincubator/muse-gadget-sdk) and adds
 > an M5Stack Core2 (v1.0) port: touch UI, push-to-talk on the screen's middle
 > button, voice, and the home-network tunnel. See [`devices/`](devices) for the
-> port notes, including the v1.1 difference.
+> port notes; Core2 v1.1 is not supported.
 
 Flash this open source firmware onto any ESP32-compatible board to connect
 Muse to your home Wi-Fi. On boards with the home-network tunnel, Muse can reach
@@ -163,7 +163,7 @@ attack. Set it up on a network you trust.
 
 ## Boards
 
-The last eight run the full on-screen UI: an animated avatar, push-to-talk and
+Boards marked UI run the full on-screen UI: an animated avatar, push-to-talk and
 settings. Audio and image support vary by board, so check the feature table in
 [`devices/`](devices). The others show status on a light, a ring or a simple
 status screen.
@@ -174,6 +174,7 @@ status screen.
 | ideaspark ESP32 with 1.9" display | Status on screen, images | `tools/board.sh ideaspark build` |
 | Seeed SenseCAP Indicator | Status on a 4" screen, images | `tools/board.sh sensecap-indicator build` |
 | Seeed reTerminal E1001 | Status on a 7.5" e-paper, black and white images | `tools/board.sh reterminal-e1001 build` |
+| Seeed reTerminal E1002 | Status on a 7.3" e-paper, six-colour images | `tools/board.sh reterminal-e1002 build` |
 | Home Assistant Voice Preview Edition | Status on the LED ring, push-to-talk, volume dial | `tools/board.sh home-assistant-voice build` |
 | Waveshare ESP32-S3-Touch-AMOLED-1.75C | UI, push-to-talk, settings, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
 | Waveshare ESP32-S3-Touch-AMOLED-1.75 | UI, push-to-talk, settings, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
@@ -186,7 +187,7 @@ status screen.
 | M5Stack StopWatch | UI, push-to-talk, settings, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
 | M5Stack CoreS3 | UI, touch, PWR push-to-talk, settings, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
 | M5Stack StickC Plus2 | UI, push-to-talk, two-button menu, images | see [`AGENTS.md`](AGENTS.md#boards-with-the-full-ui-by-hand) |
-| M5Stack Core2 (v1.0; v1.1 needs `CONFIG_BSP_PMU_AXP2101=y` — see [`devices/`](devices)) | UI, push-to-talk on the touch strip, touch menu, images | `tools/muse/board.sh build core2` |
+| M5Stack Core2 (v1.0) | UI, push-to-talk on the touch strip, touch menu, images | `tools/muse/board.sh build core2` |
 
 See [`devices/`](devices) for each board's hardware, features, and where to
 buy one.

@@ -50,6 +50,7 @@ before adding a feature to one.
 | ideaspark ESP32 + 1.9" ST7789 | `esp32` | `devices/sdkconfig.ideaspark` | `tools/board.sh ideaspark` |
 | Seeed SenseCAP Indicator | `esp32s3` | `devices/sdkconfig.sensecap-indicator` | `tools/board.sh sensecap-indicator` |
 | Seeed reTerminal E1001 | `esp32s3` | `devices/sdkconfig.reterminal-e1001` | `tools/board.sh reterminal-e1001` |
+| Seeed reTerminal E1002 | `esp32s3` | `devices/sdkconfig.reterminal-e1002` | `tools/board.sh reterminal-e1002` |
 | Home Assistant Voice Preview Edition | `esp32s3` | `devices/sdkconfig.home-assistant-voice` | `tools/board.sh home-assistant-voice` |
 | Waveshare ESP32-S3-Touch-AMOLED-1.75C | `esp32s3` | `devices/sdkconfig.muse;devices/sdkconfig.muse-waveshare-s3-175c` | manual (below) |
 | Waveshare ESP32-S3-Touch-AMOLED-1.75 | `esp32s3` | `devices/sdkconfig.muse;devices/sdkconfig.muse-waveshare-s3-175` | manual (below) |
@@ -119,7 +120,7 @@ voice note that Muse answers in the app, and the dial sets the speaker volume
 
 ### Boards with the full UI, by hand
 
-`tools/muse/board.sh build|flash <s3|s3n|aipi|box3|c6|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3> [SERIAL|PORT]`
+`tools/muse/board.sh build|flash <s3|s3n|aipi|box3|c6|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3|core2> [SERIAL|PORT]`
 builds one board in `build-muse-<profile>/`, logs to
 `/tmp/muse_build_<board>.log`, and clears `managed_components/` before and
 after so it doesn't clash with other boards. When flashing, it finds the
@@ -139,7 +140,9 @@ turns on screenshots: `tools/muse/snap.py PORT KEYS OUT.png` sends bench keys
 and saves the screen, and `>face=thinking` (or `idle`, `listening`,
 `speaking`, `error`, `boot`, `off`, `happy`) in KEYS picks the avatar mode first.
 Screenshots are off in normal builds because each one takes a buffer the size
-of the screen. `>face=` works in any build. Or run `idf.py` directly:
+of the screen. Bench builds also accept `>caption=TEXT` to test long and short
+caption redraws without a network turn. `>face=` works in any build.
+Or run `idf.py` directly:
 
 ```sh
 idf.py -B build-muse-aipi -DIDF_TARGET=esp32s3 \
@@ -201,7 +204,7 @@ flash size and status backend.
    | Descriptor | Board |
    |---|---|
    | Espressif `303a:1001`, "USB JTAG/serial debug unit" | the chip's own USB: C5, C6, S3 and the S3 boards with the full UI. Its serial number is the MAC |
-   | CH340 (`1a86:7523`) | ideaspark, SenseCAP Indicator, reTerminal E1001 |
+   | CH340 (`1a86:7523`) | ideaspark, SenseCAP Indicator, reTerminal E1001 and E1002 |
    | CH9102 | M5Stack StickC Plus2 |
    | CH342, two `usbmodem` ports | SenseCAP Watcher: the S3 console is the one ending in `3`, the other is the Himax camera |
 
@@ -243,7 +246,7 @@ cd build && python -m esptool --chip esp32c5 -b 460800 \
 
 Typical ports: `/dev/cu.usbmodem*` or `/dev/ttyACM*` for native USB (C5, S3 and
 C6 boards), and `/dev/cu.usbserial-*`, `/dev/cu.wchusbserial*` or `/dev/ttyUSB*`
-for CH340 bridges (ideaspark, SenseCAP Indicator, reTerminal E1001). On Linux,
+for CH340 bridges (ideaspark, SenseCAP Indicator, reTerminal E1001 and E1002). On Linux,
 add yourself to the `dialout` (or `uucp`) group. If the chip won't enter the
 bootloader, hold BOOT, tap RESET, release BOOT, and flash again.
 
@@ -382,7 +385,7 @@ Button (BOOT on the dev boards):
 - **hold for 5 s**: reset setup (unpair and forget Wi-Fi)
 
 The device advertises as `MuseGadget-XXXXXX` (`MuseGadget-Disp-XXXXXX` on the
-ideaspark, SenseCAP Indicator and reTerminal E1001 overlays, `MuseGadget-ha-voice-XXXXXX` on the
+ideaspark, SenseCAP Indicator and reTerminal E1001 and E1002 overlays, `MuseGadget-ha-voice-XXXXXX` on the
 Voice PE). It uses **community pairing v5**, so the phone app must support v5
 and list community devices. Community pairing needs the button press but has no
 manufacturer attestation, and it doesn't stop an active man-in-the-middle.

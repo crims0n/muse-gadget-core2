@@ -20,8 +20,8 @@
  * driver), FT6336U capacitive touch, SPM1423 PDM mic, NS4168 I2S speaker amp,
  * AXP192 PMU, CP2104 or CH9102F USB-UART bridge. Push-to-talk is the middle
  * bottom touch zone (M5's BtnB): holding PWR would cut the power in hardware
- * past ~4 s, so PWR is the aux button instead (tap sleeps, hold powers off
- * through the shared handler) and RST resets the chip. Pins, AXP rail setup
+ * past ~4 s, so PWR is the aux button instead (tap sleeps, the PMU long-press
+ * event requests a clean shutdown) and RST resets the chip. Pins, AXP rail setup
  * and the display/touch init come from Espressif's BSP; AXP192 register use
  * (PEK key, battery, shutdown), the mic pins and the touch-button geometry
  * from M5Unified; the panel, touch and audio wiring cross-checked against
@@ -33,11 +33,16 @@
  * port clocks, so one direction is configured at a time. Push-to-talk is
  * half-duplex anyway (record, then play).
  *
- * Later Core2 units (v1.1 with the AXP2101 PMU, ILI9342E panel) need
- * CONFIG_BSP_PMU_AXP2101=y in the overlay instead; the PEK, battery and
- * shutdown code below only knows the AXP192.
+ * Core2 v1.1 units use the AXP2101 PMU and are not supported: the PEK,
+ * battery, backlight and shutdown code below is specific to the AXP192.
  */
 #include <math.h>
+
+#include "sdkconfig.h"
+
+#if !CONFIG_BSP_PMU_AXP192
+#error "The Muse Core2 port requires the Core2 v1.0 AXP192 PMU"
+#endif
 
 #include "bsp/esp-bsp.h"
 #include "driver/i2c_master.h"
@@ -51,6 +56,7 @@
 
 #include "muse_audio.h"
 #include "muse_board.h"
+#include "muse_input.h"
 #include "muse_mem.h"
 #include "muse_state.h"
 
@@ -59,7 +65,7 @@ static const char *TAG = "board";
 #define DRAW_BUF_LINES 10       /* 320x10 px double-buffered, in internal RAM:
                                  * the classic ESP32's SPI DMA can't reach PSRAM */
 #define AXP_ADDR 0x34
-#define AXP_PEK_STATUS 0x46    /* bit 0: pressed/short-press, cleared on read */
+#define AXP_PEK_STATUS 0x46    /* bit 1: short press, bit 0: long press; write to clear */
 #define AXP_BATT_MV_LSB 1.1f   /* 12-bit battery ADC: 1.1 mV per step */
 
 #define MIC_CLK GPIO_NUM_0
@@ -71,7 +77,7 @@ static const char *TAG = "board";
 #define TP_X_THIRD 107         /* 320/3: BtnB is the middle third (tb_k = 65536*3/320) */
 
 static i2c_master_dev_handle_t s_axp, s_tp;
-static bool s_talk_pressed, s_aux_pressed;
+static bool s_talk_pressed;
 static i2s_chan_handle_t s_mic_rx, s_spk_tx;
 static int s_dir;              /* I2S0's current direction: 0 none, 1 mic, 2 speaker */
 static int s_mic_gain_q8 = 256;
@@ -93,9 +99,9 @@ static esp_err_t axp_write_masked(uint8_t reg, uint8_t mask, uint8_t value)
 }
 
 /*
- * PEK key status. The bits latch (the power-on press is still set at boot),
+ * PEK key events, not the physical held state. The bits latch,
  * so a nonzero read is written back to clear it, as M5Unified's AXP192 driver
- * does. Returns the raw value, or -1 on error.
+ * does. Returns the key bits (short = 2, long = 1), or -1 on error.
  */
 static int pek_read(void)
 {
@@ -103,6 +109,7 @@ static int pek_read(void)
     if (axp_read(AXP_PEK_STATUS, &val, 1) != ESP_OK) {
         return -1;
     }
+    val &= 0x03;
     if (val) {
         uint8_t clear[2] = { AXP_PEK_STATUS, val };
         if (i2c_master_transmit(s_axp, clear, sizeof(clear), 1000) != ESP_OK) {
@@ -115,8 +122,8 @@ static int pek_read(void)
 /*
  * M5's BtnB: the middle third of the bottom touch strip. Reads the FT6336
  * directly (TD_STATUS plus the first point) so holding it never depends on
- * what the UI has under it; LVGL still sees the tap as a bottom-screen touch,
- * and the shared input layer routes a talk press while the menu is open to
+ * what the UI has under it. The strip is outside the LCD, so LVGL ignores it;
+ * the shared input layer routes a talk press while the menu is open to
  * Select. Returns 1 when BtnB is held, 0 when not, -1 on error (the caller
  * keeps the previous state).
  */
@@ -157,20 +164,33 @@ static esp_err_t init(void)
     const uint8_t adc_on[2] = { 0x82, 0xff };
     ESP_RETURN_ON_ERROR(i2c_master_transmit(s_axp, adc_on, sizeof(adc_on), 1000), TAG,
                         "axp adc on");
-    /* Drop the latched power-on press: it isn't the user holding the button.
-     * The state kept is a second read past the clear, so a stale latch can't
-     * look held. Anything genuinely still held counts as already down (as on
-     * the GPIO button boards), so its release alone posts nothing. */
-    int pek = pek_read();
-    ESP_RETURN_ON_ERROR(pek < 0 ? ESP_FAIL : ESP_OK, TAG, "axp pek clear");
-    pek = pek_read();
-    ESP_RETURN_ON_ERROR(pek < 0 ? ESP_FAIL : ESP_OK, TAG, "axp pek state");
-    s_aux_pressed = (pek & 0x01) != 0;
+    /* Enable both PEK event sources, as M5Unified does. Clear any event left
+     * by the power-on press; an event bit cannot tell us whether PWR is held. */
+    ESP_RETURN_ON_ERROR(axp_write_masked(0x42, 0x03, 0x03), TAG, "axp pek enable");
+    ESP_RETURN_ON_ERROR(pek_read() < 0 ? ESP_FAIL : ESP_OK, TAG, "axp pek clear");
     /* A finger resting on the screen through boot counts as already down too.
      * The touch controller may still be unpowered here; a failed read just
      * leaves the talk state clear for the first poll to set. */
     s_talk_pressed = tp_zone() == 1;
     return ESP_OK;
+}
+
+static lv_indev_read_cb_t s_touch_read;
+static lv_point_t s_touch_point;
+
+/* The FT6336 also reports the capacitive strip below the 240-row LCD.
+ * Keep those button coordinates out of LVGL, including on release when
+ * the BSP may retain the last point. poll_buttons() handles BtnB separately. */
+static void touch_read(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    s_touch_read(indev, data);
+    if (data->point.x < 0 || data->point.x >= BSP_LCD_H_RES ||
+        data->point.y < 0 || data->point.y >= BSP_LCD_V_RES) {
+        data->state = LV_INDEV_STATE_RELEASED;
+        data->point = s_touch_point;
+    } else {
+        s_touch_point = data->point;
+    }
 }
 
 static lv_display_t *display_start(lv_indev_t **touch)
@@ -190,7 +210,14 @@ static lv_display_t *display_start(lv_indev_t **touch)
         return NULL;
     }
     *touch = bsp_display_get_input_dev();
-    return *touch ? disp : NULL;
+    if (!*touch) {
+        return NULL;
+    }
+    bsp_display_lock(0);
+    s_touch_read = lv_indev_get_read_cb(*touch);
+    lv_indev_set_read_cb(*touch, touch_read);
+    bsp_display_unlock();
+    return disp;
 }
 
 static bool display_lock(int timeout_ms)
@@ -394,9 +421,9 @@ static esp_err_t audio_init(esp_codec_dev_handle_t *spk, esp_codec_dev_handle_t 
     return *spk && *mic ? ESP_OK : ESP_FAIL;
 }
 
-/* BtnB talks; PWR (through the AXP192's latched PEK status, cleared on read)
- * is aux: tap sleeps, hold powers off through the shared handler, well short
- * of the PMU's ~4 s hardware cut. */
+/* BtnB reports real held edges. The AXP192 reports completed short/long
+ * presses instead: a short press is an aux click, and a long press requests
+ * shutdown directly, before the PMU's ~4 s hardware cut. */
 static unsigned poll_buttons(void)
 {
     unsigned out = 0;
@@ -412,13 +439,11 @@ static unsigned poll_buttons(void)
     }
     int pek = pek_read();
     if (pek >= 0) {
-        bool pressed = (pek & 0x01) != 0;
-        if (pressed && !s_aux_pressed) {
-            out |= MUSE_BTN_AUX_PRESS;
-        } else if (!pressed && s_aux_pressed) {
-            out |= MUSE_BTN_AUX_RELEASE;
+        if (pek & 0x01) {
+            muse_input_request_power_off();
+        } else if (pek & 0x02) {
+            out |= MUSE_BTN_AUX_PRESS | MUSE_BTN_AUX_RELEASE;
         }
-        s_aux_pressed = pressed;
     }
     return out;
 }
@@ -451,20 +476,11 @@ static esp_err_t read_power(muse_power_t *out)
 
 /*
  * Screen dark, then the AXP192 cuts every rail; PWR turns the board back on.
- * A 4 s hold already does that in hardware (the BSP's PEK setup), so waiting
- * out a held button here just reaches the same place through firmware.
+ * The PEK event register has no physical held state to wait on.
  */
 static esp_err_t power_off(void)
 {
     set_brightness(0);
-    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(3000);
-    for (;;) {
-        int pek = pek_read();
-        if (pek < 0 || (pek & 0x01) == 0 || xTaskGetTickCount() >= deadline) {
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(20));
-    }
     ESP_RETURN_ON_ERROR(axp_write_masked(0x32, 0x80, 0x80), TAG, "axp shutdown");
     return ESP_FAIL;
 }
