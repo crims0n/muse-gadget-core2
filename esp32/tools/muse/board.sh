@@ -1,5 +1,6 @@
 #!/bin/bash
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+# Modified 2026 by Patrick McDowell for the M5Stack Core2 port.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

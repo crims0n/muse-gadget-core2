@@ -1,5 +1,6 @@
 <!--
 Copyright (c) Meta Platforms, Inc. and affiliates.
+Modified 2026 by Patrick McDowell: unofficial-fork notice.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +16,13 @@ limitations under the License.
 -->
 
 # Muse Gadgets
+
+> **Unofficial community fork** of Meta's
+> [facebookincubator/muse-gadget-sdk](https://github.com/facebookincubator/muse-gadget-sdk)
+> that adds an M5Stack Core2 port. It is not affiliated with or endorsed by
+> Meta. Report Core2 problems in this repo's issues, not upstream. Everything
+> below is upstream's README, unchanged. See
+> [`esp32/devices/`](esp32/devices#m5stack-core2-port) for the Core2 notes.
 
 <p align="center">
   <picture>
