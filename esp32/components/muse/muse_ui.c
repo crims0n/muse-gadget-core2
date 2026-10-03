@@ -109,6 +109,7 @@ static lv_obj_t *s_name_lbl;    /* this gadget's own name, to tell it from the n
 static lv_obj_t *s_power_lbl;
 static lv_obj_t *s_caption_lbl;
 static lv_obj_t *s_reply_lbl;   /* full layout: the reply's page while answering */
+static lv_obj_t *s_bubble;      /* side-by-side layout: the bubble behind the page */
 static lv_obj_t *s_meter[METER_SEGS];
 static lv_obj_t *s_speaker;
 static lv_obj_t *s_speaker_icon;
@@ -151,8 +152,10 @@ static muse_mode_t s_last_mode = MUSE_MODE_COUNT;
  */
 typedef struct {
     int px, y;                /* Muse's size and centre */
+    int mx;                   /* Muse's centre x (0: centred) */
     int cols, lines;          /* the reply's page */
     int w, h, top;            /* and where it goes */
+    int x;                    /* the page's centre x (0: centred) */
     lv_text_align_t align;
     lv_obj_t *hides[4];       /* what it covers */
 } answer_layout_t;
@@ -163,7 +166,8 @@ static int s_answer = -1;       /* the layout showing, or -1 */
 static int s_page_for = -1;     /* the layout the reply's page is sized for */
 static int s_big_y;             /* Muse's centre at full size */
 static int s_muse_y;            /* and now */
-static int s_from_px, s_from_y, s_to_px, s_to_y;
+static int s_from_px, s_from_x, s_from_y, s_to_px, s_to_x, s_to_y;
+static int s_muse_x;            /* and across */
 
 static const char *const MODE_NAMES[MUSE_MODE_COUNT] = {
     [MUSE_MODE_BOOT] = "WAKING UP",
@@ -472,13 +476,14 @@ static void set_speaker_size(void *obj, int32_t px)
 }
 
 /* Swells over the long press, so the toggle lands as it reaches full size. */
+static int s_spk_px = SPEAKER_PX, s_spk_grow = SPEAKER_GROW_PX;
 static void speaker_grow(bool grow)
 {
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, s_speaker);
     lv_anim_set_exec_cb(&a, set_speaker_size);
-    lv_anim_set_values(&a, lv_obj_get_width(s_speaker), SPEAKER_PX + (grow ? SPEAKER_GROW_PX : 0));
+    lv_anim_set_values(&a, lv_obj_get_width(s_speaker), s_spk_px + (grow ? s_spk_grow : 0));
     lv_anim_set_duration(&a, grow ? SPEAKER_HOLD_MS : 150);
     lv_anim_start(&a);
 }
@@ -514,11 +519,13 @@ static void on_speaker_event(lv_event_t *e)
 }
 
 /* Upper left by the status icons, where a thumb finds it without covering the reply. */
-static void build_speaker(lv_obj_t *face, int x, int y)
+static void build_speaker(lv_obj_t *face, int x, int y, int px)
 {
+    s_spk_px = px;
+    s_spk_grow = px >= SPEAKER_PX ? SPEAKER_GROW_PX : 6;
     s_speaker = lv_obj_create(face);
     lv_obj_remove_style_all(s_speaker);
-    lv_obj_set_size(s_speaker, SPEAKER_PX, SPEAKER_PX);
+    lv_obj_set_size(s_speaker, px, px);
     lv_obj_set_style_radius(s_speaker, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(s_speaker, LV_OPA_COVER, 0);
     lv_obj_remove_flag(s_speaker, LV_OBJ_FLAG_SCROLLABLE);
@@ -528,7 +535,8 @@ static void build_speaker(lv_obj_t *face, int x, int y)
     for (size_t i = 0; i < sizeof(EVENTS) / sizeof(EVENTS[0]); i++) {
         lv_obj_add_event_cb(s_speaker, on_speaker_event, EVENTS[i], NULL);
     }
-    s_speaker_icon = make_label(s_speaker, &lv_font_montserrat_28, COLOR_DIM);
+    s_speaker_icon = make_label(s_speaker, px >= SPEAKER_PX ? &lv_font_montserrat_28 : &lv_font_montserrat_14,
+                               COLOR_DIM);
     lv_obj_center(s_speaker_icon);
     lv_obj_align(s_speaker, LV_ALIGN_CENTER, x, y);
     show_speaker(muse_settings_speaker_on());
@@ -550,16 +558,19 @@ static void move_muse_t(void *obj, int32_t t)
 {
     (void)obj;
     set_canvas_px(s_from_px + (s_to_px - s_from_px) * t / 256);
+    s_muse_x = s_from_x + (s_to_x - s_from_x) * t / 256;
     s_muse_y = s_from_y + (s_to_y - s_from_y) * t / 256;
-    lv_obj_align(s_canvas, LV_ALIGN_CENTER, 0, s_muse_y);
+    lv_obj_align(s_canvas, LV_ALIGN_CENTER, s_muse_x, s_muse_y);
 }
 
-/* Eases Muse to `px` centred at `y`, from wherever it is now. */
-static void move_muse(int px, int y)
+/* Eases Muse to `px` centred at (`x`, `y`), from wherever it is now. */
+static void move_muse(int px, int x, int y)
 {
     s_from_px = s_muse_src.header.w;
+    s_from_x = s_muse_x;
     s_from_y = s_muse_y;
     s_to_px = px;
+    s_to_x = x;
     s_to_y = y;
     lv_anim_t a;
     lv_anim_init(&a);
@@ -588,15 +599,18 @@ static void set_answer(int which)
             lv_obj_add_flag(l->hides[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
-    if (!muse_board->round) {
+    if (s_ring && !muse_board->round) {
         lv_obj_set_flag(s_ring, LV_OBJ_FLAG_HIDDEN, l != NULL);   /* the reply runs past a rectangle's ring */
     }
     if (l) {
         lv_obj_set_size(s_reply_lbl, l->w, l->h);
-        lv_obj_align(s_reply_lbl, LV_ALIGN_CENTER, 0, l->top + l->h / 2);
+        lv_obj_align(s_reply_lbl, LV_ALIGN_CENTER, l->x, l->top + l->h / 2);
         lv_obj_set_style_text_align(s_reply_lbl, l->align, 0);
     }
-    move_muse(l ? l->px : s_canvas_px, l ? l->y : s_big_y);
+    move_muse(l ? l->px : s_canvas_px, l ? l->mx : 0, l ? l->y : s_big_y);
+    if (s_bubble) {
+        lv_obj_set_flag(s_bubble, LV_OBJ_FLAG_HIDDEN, l == NULL);
+    }
 }
 
 /* Whether a reply `w` px wide fits across the screen `y` px from the centre. */
@@ -656,16 +670,46 @@ static void add_hides(answer_layout_t *l, int n)
  * small under the status line, and under it and the speaker button the
  * biggest page of reply text that fits inside the ring.
  */
+#define BUBBLE_W 172
+#define BUBBLE_H 138
+#define BUBBLE_X 62
+#define BUBBLE_Y 5
+
+/* Roomy compact screens (the 320x240 class): Muse small on the left, the
+ * reply in a speech bubble on the right. Same geometry heard and read. */
+static void side_layout(answer_layout_t *l, int cw, int pitch)
+{
+    int cols = (BUBBLE_W - 20) / cw;
+    int lines = (BUBBLE_H - 32 + CAPTION_LINE_SPACE) / pitch;
+    l->px = 96;
+    l->mx = -88;
+    l->y = 4;
+    l->x = BUBBLE_X;
+    l->align = LV_TEXT_ALIGN_LEFT;
+    set_reply_box(l, cols, lines, BUBBLE_Y - (lines * pitch - CAPTION_LINE_SPACE) / 2, cw, pitch);
+}
+
 static void build_answer(lv_obj_t *face, int ring_in)
 {
-    int spk_r = (SPEAKER_PX + SPEAKER_GROW_PX) / 2;
+    /* Only the roomy compact screens reach here small, so s_small below
+     * means the 320x240 class. */
+    bool roomy = s_small;
+    int spk_px = roomy ? 32 : SPEAKER_PX;
+    int spk_grow = roomy ? 6 : SPEAKER_GROW_PX;
+    int spk_r = (spk_px + spk_grow) / 2;
     int spk_x = -s_w / 2 + 8 + spk_r, spk_y = -s_h / 2 + 8 + spk_r;
     if (muse_board->round) {
         spk_y = -ring_in * 5 / 8;
         int d = ring_in - spk_r - 4;   /* just inside the ring, even when swollen */
         spk_x = -(int)sqrtf((float)(d * d - spk_y * spk_y));
+    } else if (roomy) {
+        /* top-right, tucked up: the button hints are top-left */
+        spk_x = s_w / 2 - 8 - spk_r;
+        spk_y = -s_h / 2 + 4 + spk_r;
     }
-    const lv_font_t *font = &lv_font_unscii_16;
+    /* Roomy compact reply pages use the small font: at the caption font only
+     * nine columns would fit the bubble. */
+    const lv_font_t *font = roomy ? &lv_font_unscii_8 : &lv_font_unscii_16;
     int cw = lv_font_get_glyph_width(font, 'M', ' ');
     int pitch = lv_font_get_line_height(font) + CAPTION_LINE_SPACE;
 
@@ -708,8 +752,26 @@ static void build_answer(lv_obj_t *face, int ring_in)
             set_reply_box(l, c, n, top, cw, pitch);
         }
     }
+    if (roomy) {
+        side_layout(&s_answers[ANSWER_HEARD], cw, pitch);
+        side_layout(&s_answers[ANSWER_READ], cw, pitch);
+    }
     ESP_LOGI(TAG, "reply pages: %d x %d heard, %d x %d read", s_answers[ANSWER_HEARD].cols,
              s_answers[ANSWER_HEARD].lines, l->cols, l->lines);
+
+    if (roomy) {
+        s_bubble = lv_obj_create(face);
+        lv_obj_remove_style_all(s_bubble);
+        lv_obj_set_size(s_bubble, BUBBLE_W, BUBBLE_H);
+        lv_obj_set_style_radius(s_bubble, 12, 0);
+        lv_obj_set_style_bg_opa(s_bubble, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(s_bubble, lv_color_hex(0x1a1530), 0);
+        lv_obj_set_style_border_color(s_bubble, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_set_style_border_width(s_bubble, 2, 0);
+        lv_obj_remove_flag(s_bubble, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(s_bubble, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_align(s_bubble, LV_ALIGN_CENTER, BUBBLE_X, BUBBLE_Y);
+    }
 
     s_reply_lbl = make_label(face, font, COLOR_CAPTION);
     lv_obj_set_style_text_line_space(s_reply_lbl, CAPTION_LINE_SPACE, 0);
@@ -719,7 +781,7 @@ static void build_answer(lv_obj_t *face, int ring_in)
     lv_obj_add_flag(s_reply_lbl, LV_OBJ_FLAG_HIDDEN);
 
     if (muse_board->touch) {
-        build_speaker(face, spk_x, spk_y);
+        build_speaker(face, spk_x, spk_y, spk_px);
     }
 
     /* Out of the way while a page is up: the mode name, where Muse was. */
@@ -830,6 +892,7 @@ static void build_screen(void)
     s_canvas = lv_image_create(face);
     lv_image_set_src(s_canvas, &s_muse_src);
     lv_obj_align(s_canvas, LV_ALIGN_CENTER, 0, s_big_y);
+    s_muse_x = 0;
     s_muse_y = s_big_y;
     lv_obj_add_flag(s_canvas, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_canvas, on_canvas_clicked, LV_EVENT_CLICKED, NULL);
@@ -887,6 +950,13 @@ static void build_screen(void)
         lv_obj_set_size(s_bar, 0, 3);
         lv_obj_set_style_bg_opa(s_bar, LV_OPA_COVER, 0);
         lv_obj_align(s_bar, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+        /* Roomy compact screens (the 320x240 class) also get the reply pages:
+         * while thinking and speaking Muse moves aside and the reply wraps
+         * in a speech bubble, instead of truncating to the two-line caption.
+         * Smaller screens keep the caption. */
+        if (s_w >= 300 && s_h >= 200 && !muse_board->round) {
+            build_answer(face, ring_in);
+        }
         return;
     }
     /* Fixed height: a longer caption ends in dots rather than growing into the ring. */

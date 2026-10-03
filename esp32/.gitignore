@@ -15,6 +15,8 @@
 tmp/
 build/
 build-*/
+# Factory flash backups (read-flash before flashing a new board).
+core2-factory-backup.bin
 sdkconfig
 sdkconfig.old
 managed_components/
