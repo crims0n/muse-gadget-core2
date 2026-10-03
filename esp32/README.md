@@ -16,6 +16,12 @@ limitations under the License.
 
 # ESP32 Device SDK
 
+> **Community Core2 port.** This repo tracks Meta's
+> [muse-gadget-sdk](https://github.com/facebookincubator/muse-gadget-sdk) and adds
+> an M5Stack Core2 (v1.0) port: touch UI, push-to-talk on the screen's middle
+> button, voice, and the home-network tunnel. See [`devices/`](devices) for the
+> port notes, including the v1.1 difference.
+
 Flash this open source firmware onto any ESP32-compatible board to connect
 Muse to your home Wi-Fi. On boards with the home-network tunnel, Muse can reach
 the devices you already own and anything you build with a local HTTP API.
